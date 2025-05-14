@@ -68,7 +68,7 @@ p = 1;
 ubar = linspace(1, 0.5, N);
 
 % Generate measurement noise
-ebar = 0.01*randn(1, N+1);
+ebar = 0*randn(1, N+1);
 
 % Time span
 tspan = linspace(0, 10, N+1);
@@ -127,10 +127,10 @@ optopts = optimset(    ...
     'TolFun', 1e-8);
 
 % Initial guess of optimal control
-p0 = [0.5, 1];
+theta0 = [0.5, 0.1];
 
 % Use fmincon to solve the numerical optimization problem
-thetaest = fmincon(@evaluateObjectiveFunction, p0, A, B, Aeq, Beq, lb, ub, nonlcon, optopts, ...
+thetaest = fmincon(@evaluateObjectiveFunction, theta0, A, B, Aeq, Beq, lb, ub, nonlcon, optopts, ...
     ybar, ubar, tspan, fun, output, stageCost, odeopts);
 
 % True solution (for comparison)
@@ -176,49 +176,83 @@ function J = evaluateObjectiveFunction(theta, ybar, ubar, tspan, fun, outp, stag
 N = size(ubar, 2);
 
 % Initial time, state, and input
-t0 = tspan(1);
 x0 = theta(1);
-u0 = ubar (1);
 
 % Parameters
 p = theta(2:end);
 
-% Measurement
-ymeas = ybar(:, 1);
+% Open-loop simulation
+[~, X, idx] = openLoopSimulation(ubar, x0, tspan, fun, p, odeopts);
 
-% Evaluate outputs
-y0 = outp(t0, x0, u0);
+% Outputs
+Y = outp(tspan, X, ubar, p);
 
-% Evaluate stage cost
-Phi = stageCost(y0, ymeas);
+% Measurements
+y = Y(idx)';
 
-% Initialize objective function value
-J = Phi;
+% Initialize
+J = 0;
 
-for k = 1:N
-    % Manipulated inputs in current control interval
-    uk = ubar(:, k);
-
+for k = 1:N+1
     % Measurement
-    ymeas = ybar(:, k+1);
-
-    % Simulate
-    [t, x] = ode45(fun, tspan([k, k+1]), x0, odeopts, ...
-        uk, p);
-
-    % Evaluate outputs
-    y = outp(t, x(end, :)', uk);
+    ymeas = ybar(:, k);
 
     % Evaluate stage cost
-    Phi = stageCost(y, ymeas);
+    Phi = stageCost(y(k), ymeas);
 
     % Evaluate objective function
     J = J + Phi;
+end
+end
 
-    % Update initial states
-    x0 = x(end, :);
-end
-end
+% function J = evaluateObjectiveFunction_DEPRECATED(theta, ybar, ubar, tspan, fun, outp, stageCost, odeopts)
+% % Number of control intervals
+% N = size(ubar, 2);
+% 
+% % Initial time, state, and input
+% t0 = tspan(1);
+% x0 = theta(1);
+% u0 = ubar (1);
+% 
+% % Parameters
+% p = theta(2:end);
+% 
+% % Measurement
+% ymeas = ybar(:, 1);
+% 
+% % Evaluate outputs
+% y0 = outp(t0, x0, u0);
+% 
+% % Evaluate stage cost
+% Phi = stageCost(y0, ymeas);
+% 
+% % Initialize objective function value
+% J = Phi;
+% 
+% for k = 1:N
+%     % Manipulated inputs in current control interval
+%     uk = ubar(:, k);
+% 
+%     % Measurement
+%     ymeas = ybar(:, k+1);
+% 
+%     % Simulate
+%     [t, x] = ode45(fun, tspan([k, k+1]), x0, odeopts, ...
+%         uk, p);
+% 
+%     % Evaluate outputs
+%     y = outp(t, x(end, :)', uk);
+% 
+%     % Evaluate stage cost
+%     Phi = stageCost(y, ymeas);
+% 
+%     % Evaluate objective function
+%     J = J + Phi;
+% 
+%     % Update initial states
+%     x0 = x(end, :);
+% end
+% end
 
 function [T, X, idx] = openLoopSimulation(ubar, x0, tspan, fun, p, odeopts)
 
